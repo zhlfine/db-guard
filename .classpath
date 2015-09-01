@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="lib" path="deps/logging/logback-classic-0.9.29.jar"/>
+	<classpathentry kind="lib" path="deps/logging/logback-core-0.9.29.jar"/>
+	<classpathentry kind="lib" path="deps/logging/slf4j-api-1.6.1.jar"/>
+	<classpathentry kind="lib" path="deps/jdbc/postgresql-9.4-1202.jdbc42.jar"/>
+	<classpathentry kind="lib" path="deps/codegen/cglib-nodep-3.1.jar"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

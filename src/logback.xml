@@ -1,0 +1,15 @@
+<configuration>
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+          <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+<!-- 	<logger name="cn.zhl.db"> -->
+<!-- 		<level value="INFO" /> -->
+<!-- 	</logger> -->
+	
+  <root level="DEBUG">
+    <appender-ref ref="STDOUT" />
+  </root>
+</configuration>
