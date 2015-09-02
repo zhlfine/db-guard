@@ -9,15 +9,13 @@ public class Test {
 		ctx.registerDBInfo(new DBInfo("org.postgresql.Driver", "jdbc:postgresql://localhost:5432/postgres", "postgres", "postgres", 3));
 		
 		DBContext.registerDBObject(Menu.class);
-		
 		ctx.generateSchema(new File("test.sql"));
 		
 		ServiceBase svc = (ServiceBase)ctx.getTxService(new ServiceBaseImpl());
 		Menu menu = svc.queryUnique(Menu.class, Menu.DB.COLUMN_ID.equalsTo("1"));
-		System.out.println(menu);
 		
-		String status = ctx.getConnectionPoolStatus();
-		System.out.println(status);
+		menu.descr = "hello";
+		svc.update(menu);
 	}
 	
 	public static class Menu{
@@ -29,7 +27,7 @@ public class Test {
 		public static class DB<T extends Menu> extends GenericDAO<T>{
 			public static DBColumn COLUMN_ID       = new DBColumn.STRING("id", 10, true);
 			public static DBColumn COLUMN_NAME     = new DBColumn.STRING("name", 20);
-			public static DBColumn COLUMN_MENU     = new DBColumn.OBJECT<Menu>(Menu.class, "parent");
+			public static DBColumn COLUMN_PARENT   = new DBColumn.OBJECT<Menu>(Menu.class, "parent");
 			public static DBColumn COLUMN_DESCR    = new DBColumn.STRING("descr", 64);
 		}
 
