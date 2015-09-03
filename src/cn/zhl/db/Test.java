@@ -1,6 +1,5 @@
 package cn.zhl.db;
 
-import java.io.File;
 
 public class Test {
 	
@@ -8,44 +7,29 @@ public class Test {
 		DBContext ctx = new DBContext();
 		ctx.registerDBInfo(new DBInfo("org.postgresql.Driver", "jdbc:postgresql://localhost:5432/postgres", "postgres", "postgres", 3));
 		
-		DBContext.registerDBObject(Menu.class);
-		ctx.generateSchema(new File("test.sql"));
-		
+//		DBContext.registerDBObject(Sample.class);
+//		ctx.generateSchema(new File("test.sql"));
+	
 		ServiceBase svc = (ServiceBase)ctx.getTxService(new ServiceBaseImpl());
-		Menu menu = svc.queryUnique(Menu.class, Menu.DB.COLUMN_ID.equalsTo("1"));
-		
-		menu.descr = "hello";
-		svc.update(menu);
+		Sample sample = svc.queryUnique(Sample.class, Sample.DB.COLUMN_ID.equalsTo("1"));
+
+//		ctx.startTransaction();
+//		try{
+//			Sample sample = DBContext.getDAO(Sample.class).queryUnique(ctx, Sample.DB.COLUMN_ID.equalsTo("1"));
+//			
+//			ctx.commitTransaction();
+//		}catch(Exception e){
+//			ctx.rollbackTransaction();
+//		}
 	}
 	
-	public static class Menu{
+	public static class Sample {
 		private String id;
 		private String name;
-		private Menu parent;
-		private String descr;
 		
-		public static class DB<T extends Menu> extends GenericDAO<T>{
+		public static class DB<T extends Sample> extends GenericDAO<T>{
 			public static DBColumn COLUMN_ID       = new DBColumn.STRING("id", 10, true);
 			public static DBColumn COLUMN_NAME     = new DBColumn.STRING("name", 20);
-			public static DBColumn COLUMN_PARENT   = new DBColumn.OBJECT<Menu>(Menu.class, "parent");
-			public static DBColumn COLUMN_DESCR    = new DBColumn.STRING("descr", 64);
 		}
-
-		public String getId() {
-			return id;
-		}
-
-		public String getName() {
-			return name;
-		}
-
-		public Menu getParent() {
-			return parent;
-		}
-
-		public String getDescr() {
-			return descr;
-		}
-		
 	}
 }
