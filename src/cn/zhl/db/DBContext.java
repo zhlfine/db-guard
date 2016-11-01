@@ -12,6 +12,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import cn.zhl.db.annotation.DAO;
+
 public class DBContext {
 	private static ThreadLocal<DBConnection> connection = new ThreadLocal<DBConnection>();
 	private static ThreadLocal<DBContext> context = new ThreadLocal<DBContext>();
@@ -188,9 +190,18 @@ public class DBContext {
 			String key = beanClass.getName();
 			GenericDAO<T> dao = (GenericDAO<T>)daoInstances.get(key);
 			if(dao == null){
-				String daoClass = beanClass.getName()+"$DB";
 				try {
-					dao = (GenericDAO<T>)Class.forName(daoClass).newInstance();
+					Class<?> daoClass = null;
+					
+					DAO annotation = beanClass.getAnnotation(DAO.class);
+					if(annotation != null){
+						daoClass = annotation.value();
+					}else{
+						String innerClass = beanClass.getName()+"$DB";
+						daoClass = Class.forName(innerClass);
+					}
+					
+					dao = (GenericDAO<T>)daoClass.newInstance();
 					daoInstances.put(key, dao);
 				} catch (Exception e) {
 					throw new RuntimeException(e);

@@ -1,5 +1,6 @@
 package cn.zhl.db;
 
+import cn.zhl.db.annotation.DAO;
 
 public class Test {
 	
@@ -23,6 +24,7 @@ public class Test {
 //		}
 	}
 	
+	@DAO(SampleDAO.class)
 	public static class Sample {
 		private String id;
 		private String name;
@@ -31,5 +33,10 @@ public class Test {
 			public static DBColumn COLUMN_ID       = new DBColumn.STRING("id", 10, true);
 			public static DBColumn COLUMN_NAME     = new DBColumn.STRING("name", 20);
 		}
+	}
+	
+	public static class SampleDAO extends GenericDAO<Sample>{
+		public static DBColumn COLUMN_ID       = new DBColumn.STRING("id", 10, true);
+		public static DBColumn COLUMN_NAME     = new DBColumn.STRING("name", 20);
 	}
 }
