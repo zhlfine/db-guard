@@ -12,6 +12,8 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import cn.zhl.db.annotation.Table;
+
 public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 	static Logger logger = LoggerFactory.getLogger(GenericDAO.class);
 	
@@ -75,21 +77,34 @@ public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 	}
 	
 	public String getTableName(){
-		return entityClass.getSimpleName().toLowerCase();
+		Table table = this.getClass().getAnnotation(Table.class);
+		if(table != null){
+			return table.value();
+		}else{
+			return entityClass.getSimpleName().toLowerCase();
+		}
 	}
 	
 	public DBColumn[] getDBColumns(){
 		return columns;
 	}
 	
-	public DBColumn[] getPKColumns(){
-		List<DBColumn> pks = new ArrayList<DBColumn>();
+	public DBColumn getPKColumn(){
+		DBColumn pk = null;
 		for(DBColumn col : getDBColumns()){
       		if(col.isPK()){
-				pks.add(col);
+      			if(pk == null){
+      				pk = col;
+      			}else{
+      				throw new RuntimeException("Composite primary key is not supported: " + this.getClass().getName());
+      			}
 			}
 		}
-		return pks.toArray(new DBColumn[pks.size()]);
+		if(pk == null){
+			throw new RuntimeException("primary key is not defined in " + this.getClass().getName());
+		}
+		
+		return pk;
 	}
 	
 	public DBColumn.LIST<?>[] getListColumns(){
@@ -186,18 +201,12 @@ public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 			if(i < getDBColumns().length-1){
 				buf.append(",");
 			}else{
-				DBColumn[] pks = getPKColumns();
-				if(pks.length > 0){
-					buf.append(",\r\n");
-					buf.append("    primary key(");
-					for(int j = 0; j < pks.length; j++){
-						pks[j].appendColumnName(buf, ",");
-						if(j < pks.length-1){
-							buf.append(",");
-						}
-					}
-					buf.append(")");
-				}
+				DBColumn pk = getPKColumn();
+				buf.append(",\r\n");
+				buf.append("    primary key(");
+				pk.appendColumnName(buf, ",");
+				buf.append(")");
+
 				DBColumn.OBJECT<?>[] fks = getFKColumns();
 				if(fks.length > 0){
 					buf.append(",\r\n");
@@ -208,13 +217,8 @@ public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 						buf.append(fks[j].getReferedTableName());
 						buf.append("(");
 						
-						DBColumn[] cols = fks[j].getReferedColumns();
-						for(int k = 0; k < cols.length; k++){
-							cols[k].appendColumnName(buf, ",");
-							if(k < cols.length-1){
-								buf.append(",");
-							}
-						}
+						DBColumn col = fks[j].getReferedColumn();
+						col.appendColumnName(buf, ",");
 						
 						buf.append(")");
 						
@@ -328,6 +332,27 @@ public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 		}
 	}
 	
+	public int updateFields(DBContext ctx, DBField pkField, DBField[] fields) throws DBException{
+		StringBuilder buffer = new StringBuilder();
+      	buffer.append("update ").append(getTableName()).append(" set ");
+      	for(int i = 0; i < fields.length; i++){
+      		DBField field = fields[i];
+			field.getColumn().equalsTo(field.getValue()).appendSetCondition(ctx, buffer);
+			if(i < fields.length-1){
+				buffer.append(",");
+			}
+		}
+      	buffer.append(" where ");
+		pkField.getColumn().equalsTo(pkField.getValue()).appendWhereCondition(ctx, buffer);
+      	
+      	String sql = buffer.toString();
+		try {
+			return DBHelper.executeUpdate(ctx, sql);
+		} catch (SQLException e) {
+			throw new DBException(e);
+		}
+	}
+	
 	public List<T> query(DBContext ctx){
 		return query(ctx, null, null, 0, 0);
 	}
@@ -399,12 +424,12 @@ public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 
 	
 	public T queryByPK(DBContext ctx, T bean){
-		DBColumn[] pks = this.getPKColumns();	
-		if(pks.length == 0){
+		DBColumn pk = this.getPKColumn();	
+		if(pk == null){
 			throw new DBException("No Primary Key");
 		}
-			
-		DBCondition condition = new DBCondition(pks, bean);		
+		Object pkValue = pk.getValue(bean);
+		DBCondition condition = new DBCondition(pk, pkValue);		
 		return queryUnique(ctx, condition);
 	}
 	
@@ -413,12 +438,12 @@ public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 	}
 	
 	public int deleteByPK(DBContext ctx, T bean){
-		DBColumn[] pks = this.getPKColumns();	
-		if(pks.length == 0){
+		DBColumn pk = this.getPKColumn();	
+		if(pk == null){
 			throw new DBException("No Primary Key");
 		}
-			
-		DBCondition condition = new DBCondition(pks, bean);		
+		Object pkValue = pk.getValue(bean);
+		DBCondition condition = new DBCondition(pk, pkValue);		
 		return delete(ctx, condition);
 	}
 	

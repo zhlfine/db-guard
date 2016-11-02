@@ -5,13 +5,11 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-import cn.zhl.db.GenericDAO;
-
 
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface DAO {
+public @interface Table {
 	
-	Class<? extends GenericDAO<?>> value();
+	String value();
 
 }

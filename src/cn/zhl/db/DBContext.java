@@ -43,7 +43,11 @@ public class DBContext {
 	}
 
 	public void registerDBInfo(DBInfo dbInfo) {
-		dbInfos.put(getDbId(), dbInfo);
+		registerDBInfo(getDbId(), dbInfo);
+	}
+	
+	public static void registerDBInfo(String dbId, DBInfo dbInfo) {
+		dbInfos.put(dbId, dbInfo);
 	}
 	
 	public String getDbId() {

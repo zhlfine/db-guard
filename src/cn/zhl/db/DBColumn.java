@@ -1,6 +1,5 @@
 package cn.zhl.db;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -8,23 +7,34 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import net.sf.cglib.proxy.Enhancer;
+import org.apache.commons.lang3.reflect.FieldUtils;
+
 import cn.zhl.db.DBCondition.Oper;
+import net.sf.cglib.proxy.Enhancer;
 
 public abstract class DBColumn {
 
-	private String name;
+	private String fieldName;
+	private String columnName;
 	private boolean isPK;
 	private boolean useSequence;
 	
-	public DBColumn(String name, boolean isPK, boolean useSequence){
-		this.name = name;
+	public DBColumn(String fieldName, String columnName, boolean isPK, boolean useSequence){
+		this.fieldName = fieldName;
+		this.columnName = columnName;
 		this.isPK = isPK;
 		this.useSequence = useSequence;
 	}
+	public DBColumn(String fieldName, boolean isPK, boolean useSequence){
+		this(fieldName, fieldName.toLowerCase(), isPK, useSequence);
+	}
 	
 	public String getFieldName(){
-		return name;
+		return fieldName;
+	}
+	
+	public String getColumnName(){
+		return columnName;
 	}
 	
 	public boolean useSequence(){
@@ -67,9 +77,7 @@ public abstract class DBColumn {
 
 	public void setValue(Object obj, Object value){
 		try {
-			Field field = obj.getClass().getDeclaredField(getFieldName());
-			field.setAccessible(true);     
-	        field.set(obj, value);
+			FieldUtils.writeField(obj, getFieldName(), value, true);
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
@@ -79,55 +87,85 @@ public abstract class DBColumn {
 		if(obj == null) return null;
 		
 		try {
-			Field field = obj.getClass().getDeclaredField(getFieldName());
-			field.setAccessible(true);     
-	        return field.get(obj);
+			return FieldUtils.readField(obj, getFieldName(), true);
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
 	}
 	
-	public void setValueFromResultSet(Object obj, ResultSet rs) throws SQLException{
-		setValueFromResultSet(obj, rs, null, null);
-	}
-	
-	public void appendColumnName(StringBuilder buffer, String seperator){
-		appendColumnName(buffer, seperator, null, null);
-	}
-	
-	public void appendDDL(DBContext ctx, StringBuilder buffer){
-		appendDDL(ctx, buffer, null, null);
-	}
-	
-	public void appendWhereCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper){
-		appendWhereCondition(ctx, buffer, value, oper, null, null);
-	}
-	
-	public void appendSetCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper){
-		appendSetCondition(ctx, buffer, value, oper, null, null);
+	protected void appendDDL(DBContext ctx, StringBuilder buffer){
+		buffer.append("    ");
+		if(columnName.length() < 15){
+			buffer.append(rightPadding(columnName, 15));
+		}else{
+			buffer.append(columnName);
+		}
+		buffer.append(" ").append(getTypeInSQL(ctx));
 	}
 	
 	public void appendOrder(StringBuilder buffer, DBOrder order){
 		buffer.append(" order by ");
-		appendOrder(buffer, order.getOrder());
+		buffer.append(columnName).append(" ").append(order.getOrder());
 	}	
-	protected void appendOrder(StringBuilder buffer, String order){
-		appendOrder(buffer, order, null, null);
+	
+	public void appendColumnName(StringBuilder buffer, String seperator){
+		buffer.append(columnName);
+	}
+	
+	public void appendColumnValue(DBContext ctx, StringBuilder buffer, Object value, String seperator){
+		String strValue = getValueInSQL(ctx, value);
+		buffer.append(strValue);
+	}
+
+	protected void appendWhereCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper){
+		if(value == null){
+    		if(Oper.Equal == oper){
+    			buffer.append(columnName).append(" is null");
+    		}else if(Oper.NotEqual == oper){
+    			buffer.append(columnName).append(" is not null");
+    		}else{
+    			throw new RuntimeException("Invalid SQL condition: " + columnName + " " + oper.getOperator() + " null");
+    		}
+    	}else{
+    		String str = getValueInSQL(ctx, value);
+    		buffer.append(columnName).append(oper.getOperator()).append(str);
+    	}
+	}
+	
+	protected void appendSetCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper){
+		String columnName = this.getColumnName();
+		if(value == null){
+    		buffer.append(columnName).append(Oper.Equal.getOperator()).append("null");
+    	}else{
+    		String str = getValueInSQL(ctx, value);
+    		buffer.append(columnName).append(Oper.Equal.getOperator()).append(str);
+    	}
+	}
+
+	public void copyValue(Object from, Object to){
+		Object value = getValue(from);
+		setValue(to, value);
+	}
+		
+	protected boolean setValueFromResultSet(Object obj, ResultSet rs) throws SQLException{
+		Object value = rs.getObject(this.getColumnName());
+		if(value != null){
+			try {
+				FieldUtils.writeField(obj, getFieldName(), value, true);
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+			return true;
+		}else{
+			return false;
+		}
 	}
 	
 	public abstract Object valueOf(Object value);
 	public abstract Class<?> getValueType();
 	
-	public abstract void copyValue(Object from, Object to);
-	
-	protected abstract boolean setValueFromResultSet(Object obj, ResultSet rs, String columnPrefix, String columnSuffix) throws SQLException;
-	public abstract void appendColumnValue(DBContext ctx, StringBuilder buffer, Object value, String seperator);
-	
-	protected abstract void appendColumnName(StringBuilder buffer, String seperator, String columnPrefix, String columnSuffix);
-	protected abstract void appendDDL(DBContext ctx, StringBuilder buffer, String columnPrefix, String columnSuffix);
-	protected abstract void appendWhereCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper, String columnPrefix, String columnSuffix);
-	protected abstract void appendSetCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper, String columnPrefix, String columnSuffix);
-	protected abstract void appendOrder(StringBuilder buffer, String order, String columnPrefix, String columnSuffix);
+	public abstract String getTypeInSQL(DBContext ctx);
+	public abstract String getValueInSQL(DBContext ctx, Object value);
 	
 	public DBCondition greaterThan(Object value)	{return new DBCondition(this, value, Oper.Greater);}   
     public DBCondition greaterEqual(Object value)	{return new DBCondition(this, value, Oper.GreaterEqual);}  
@@ -137,6 +175,11 @@ public abstract class DBColumn {
     public DBCondition notEqual(Object value)		{return new DBCondition(this, value, Oper.NotEqual);}
     public DBCondition like(Object value)			{return new DBCondition(this, value, Oper.Like);}
     public DBCondition notLike(Object value)		{return new DBCondition(this, value, Oper.NotLike);}
+    
+    private static String rightPadding(String str, int length){
+    	String format = "%1$-" + length +"s";
+    	return String.format(format, str);
+    }
     
 	public static class LIST<T> extends DBColumn{
 		private Class<T> beanClass;
@@ -183,9 +226,7 @@ public abstract class DBColumn {
 				list = (List<T>)enhancer.create();
 			}
 			try {
-				Field field = obj.getClass().getDeclaredField(getFieldName());
-				field.setAccessible(true);     
-		        field.set(obj, list);
+				FieldUtils.writeField(obj, getFieldName(), list, true);
 			} catch (Exception e) {
 				throw new RuntimeException(e);
 			}
@@ -205,25 +246,25 @@ public abstract class DBColumn {
 			}
 		}
 
-		protected boolean setValueFromResultSet(Object obj, ResultSet rs, String columnPrefix, String columnSuffix) throws SQLException {
+		protected boolean setValueFromResultSet(Object obj, ResultSet rs) throws SQLException {
 			throw new DBException("It's a bug if code run here");
 		}
 		public void appendColumnValue(DBContext ctx, StringBuilder buffer, Object value, String seperator) {
 			throw new DBException("It's a bug if code run here");
 		}
-		protected void appendColumnName(StringBuilder buffer, String seperator, String columnPrefix, String columnSuffix) {
+		protected void appendWhereCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper) {
 			throw new DBException("It's a bug if code run here");
 		}
-		protected void appendDDL(DBContext ctx, StringBuilder buffer, String columnPrefix, String columnSuffix) {
+		protected void appendSetCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper) {
 			throw new DBException("It's a bug if code run here");
 		}
-		protected void appendWhereCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper, String columnPrefix, String columnSuffix) {
+		protected void appendDDL(DBContext ctx, StringBuilder buffer) {
 			throw new DBException("It's a bug if code run here");
 		}
-		protected void appendSetCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper, String columnPrefix, String columnSuffix) {
+		public String getTypeInSQL(DBContext ctx) {
 			throw new DBException("It's a bug if code run here");
 		}
-		protected void appendOrder(StringBuilder buffer, String order, String columnPrefix, String columnSuffix) {
+		public String getValueInSQL(DBContext ctx, Object value) {
 			throw new DBException("It's a bug if code run here");
 		}
 	}
@@ -232,7 +273,7 @@ public abstract class DBColumn {
 	public static class OBJECT<T> extends DBColumn{
 		private Class<T> beanClass;
 		private GenericDAO<T> dao;
-		private DBColumn[] pkColumns;
+		private DBColumn pkColumn;
 		private boolean preFetch;
 		
 		public OBJECT(Class<T> beanClass, String name) {
@@ -250,11 +291,26 @@ public abstract class DBColumn {
 			this.preFetch = preFetch;
 			init(beanClass);
 		}
+		public OBJECT(Class<T> beanClass, String name, String columnName) {
+			super(name, columnName, false, false);
+			this.preFetch = false;
+			init(beanClass);
+		}
+		public OBJECT(Class<T> beanClass, String name, String columnName, boolean preFetch) {
+			super(name, columnName, false, false);
+			this.preFetch = preFetch;
+			init(beanClass);
+		}
+		public OBJECT(Class<T> beanClass, String name, String columnName, boolean preFetch, boolean isPK) {
+			super(name, columnName, isPK, false);
+			this.preFetch = preFetch;
+			init(beanClass);
+		}
 		
 		private void init(Class<T> beanClass){
 			this.beanClass = beanClass;
 			this.dao = DBContext.getDAO(beanClass);
-			this.pkColumns = dao.getPKColumns();
+			this.pkColumn = dao.getPKColumn();
 		}
 		
 		public Class<T> getReferedClass(){
@@ -265,25 +321,15 @@ public abstract class DBColumn {
 			return dao.getTableName();
 		}
 		
-		public DBColumn[] getReferedColumns(){
-			return pkColumns;
+		public DBColumn getReferedColumn(){
+			return pkColumn;
 		}
-		
-		private String getColumnPrefix(){
-			return dao.getTableName().toLowerCase()+"_";
-		}
-		
-		private String getColumnSuffix(){
-			return "_" + getFieldName().toLowerCase();
-		}
-		
+
 		public void validate(Object obj) throws DBException{
 			if(obj == null) return;
 			
 			Object value = getValue(obj);
-			for(int i = 0; i < pkColumns.length; i++){
-				pkColumns[i].validate(value);
-			}
+			pkColumn.validate(value);
 		}
 		
 		public void copyValue(Object from, Object to){
@@ -296,83 +342,44 @@ public abstract class DBColumn {
 		}
 
 		public void appendColumnValue(DBContext ctx, StringBuilder buffer, Object value, String seperator){
-			for(int i = 0; i < pkColumns.length; i++){
-				Object primitiveValue = null;
-				if(value != null){
-					primitiveValue = pkColumns[i].getValue(value);
-				}
-				pkColumns[i].appendColumnValue(ctx, buffer, primitiveValue, seperator);
-				if(i < pkColumns.length-1){
-					buffer.append(seperator);
-				}
+			Object primitiveValue = null;
+			if(value != null){
+				primitiveValue = pkColumn.getValue(value);
 			}
+			pkColumn.appendColumnValue(ctx, buffer, primitiveValue, seperator);
 		}
-		
-		public void appendColumnName(StringBuilder buffer, String seperator){
-			this.appendColumnName(buffer, seperator, getColumnPrefix(), getColumnSuffix());
-		}		
-		protected void appendColumnName(StringBuilder buffer, String seperator, String columnPrefix, String columnSuffix){
-			for(int i = 0; i < pkColumns.length; i++){
-				pkColumns[i].appendColumnName(buffer, seperator, getColumnPrefix(), columnSuffix);
-				if(i < pkColumns.length-1){
-					buffer.append(seperator);
-				}
-			}
-		}
-		
-		public void appendDDL(DBContext ctx, StringBuilder buffer){
-			appendDDL(ctx, buffer, getColumnPrefix(), getColumnSuffix());
-		}		
-		protected void appendDDL(DBContext ctx, StringBuilder buffer, String columnPrefix, String columnSuffix){
-			for(int i = 0; i < pkColumns.length; i++){
-				pkColumns[i].appendDDL(ctx, buffer, getColumnPrefix(), columnSuffix);
-				if(i < pkColumns.length-1){
-					buffer.append(",\r\n");
-				}
-			}
-		}
-		
+
 		public Class<T> getValueType(){
 			return beanClass;
 		}
-		
-		public void setValueFromResultSet(Object obj, ResultSet rs) throws SQLException{
-			setValueFromResultSet(obj, rs, getColumnPrefix(), getColumnSuffix());
-		}
-		
-		@SuppressWarnings("unchecked")
-		protected boolean setValueFromResultSet(Object obj, ResultSet rs, String columnPrefix, String columnSuffix) throws SQLException{		
-			T beanWithKey = dao.newEntityInstance();
-			boolean isNull = false;
-			for(int i = 0; i < pkColumns.length; i++){
-				boolean ret = pkColumns[i].setValueFromResultSet(beanWithKey, rs, getColumnPrefix(), columnSuffix);
-				if(!ret){
-					isNull = true;
-					break;
-				}
-			}			
-			if(!isNull){
-				T bean = null;
-				if(preFetch){
-					Class<T> beanClass = dao.getEnitityClass();
-					bean = DBContext.getDAO(beanClass).queryByPK(DBContext.getContext(), beanWithKey);
-				}else{
-					Enhancer enhancer = new Enhancer();
-					enhancer.setSuperclass(beanClass);
-					enhancer.setCallback(new DBObjectProxy<T>(pkColumns, obj, beanWithKey, getFieldName()));
-					bean = (T)enhancer.create();
-				}
 
+		@SuppressWarnings("unchecked")
+		protected boolean setValueFromResultSet(Object obj, ResultSet rs) throws SQLException{		
+			Object value = rs.getObject(this.getColumnName());
+			if(value != null){
 				try {
-					Field field = obj.getClass().getDeclaredField(getFieldName());
-					field.setAccessible(true);     
-			        field.set(obj, bean);
-					//method.invoke(obj, bean);
+					T bean = dao.newEntityInstance();
+					FieldUtils.writeField(bean, dao.getPKColumn().getFieldName(), value, true);
+
+					if(preFetch){
+						Class<T> beanClass = dao.getEnitityClass();
+						bean = DBContext.getDAO(beanClass).queryByPK(DBContext.getContext(), bean);
+					}else{
+						Enhancer enhancer = new Enhancer();
+						enhancer.setSuperclass(beanClass);
+						enhancer.setCallback(new DBObjectProxy<T>(pkColumn, obj, bean, getFieldName()));
+						bean = (T)enhancer.create();
+					}
+
+					FieldUtils.writeField(obj, getFieldName(), bean, true);
+					
+					return true;
 				} catch (Exception e) {
 					throw new RuntimeException(e);
 				}
-			}		
-			return !isNull;
+			}else{
+				return false;
+			}
 		}
 
 		public Object valueOf(Object value) {
@@ -384,80 +391,26 @@ public abstract class DBColumn {
 				throw new RuntimeException("Cannot cast "+value+" to "+beanClass.getSimpleName());
 			}
 		}
-		
-		public void appendWhereCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper){
-			appendWhereCondition(ctx, buffer, value, oper, getColumnPrefix(), getColumnSuffix());
-		}
-		
-		protected void appendWhereCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper, String columnPrefix, String columnSuffix){
-			for(int i = 0; i < pkColumns.length; i++){
-	    		Object primitiveValue = null;
-				if(value != null){
-					primitiveValue = pkColumns[i].getValue(value);
-				}
-				
-	    		pkColumns[i].appendWhereCondition(ctx, buffer, primitiveValue, oper, getColumnPrefix(), columnSuffix);
 
-				if(i < pkColumns.length-1){
-					buffer.append(" and ");
-				}
-			}
-		}
-		
-		public void appendSetCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper){
-			appendSetCondition(ctx, buffer, value, oper, getColumnPrefix(), getColumnSuffix());
-		}
-		
-		protected void appendSetCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper, String columnPrefix, String columnSuffix){
-			for(int i = 0; i < pkColumns.length; i++){
-	    		Object primitiveValue = null;
-				if(value != null){
-					primitiveValue = pkColumns[i].getValue(value);
-				}
-				
-	    		pkColumns[i].appendSetCondition(ctx, buffer, primitiveValue, oper, getColumnPrefix(), columnSuffix);
-
-				if(i < pkColumns.length-1){
-					buffer.append(",");
-				}
-			}
+		public String getTypeInSQL(DBContext ctx) {
+			return pkColumn.getTypeInSQL(ctx);
 		}
 
-		protected void appendOrder(StringBuilder buffer, String order){
-			appendOrder(buffer, order, getColumnPrefix(), getColumnSuffix());
-		}
-		
-		protected void appendOrder(StringBuilder buffer, String order, String columnPrefix, String columnSuffix){
-			for(int i = 0; i < pkColumns.length; i++){
-				pkColumns[i].appendOrder(buffer, order, getColumnPrefix(), columnSuffix);
-				if(i < pkColumns.length-1){
-					buffer.append(",");
-				}
-			}
+		public String getValueInSQL(DBContext ctx, Object value) {
+			return pkColumn.getValueInSQL(ctx, value);
 		}
 	}
 	
 	
 	public static abstract class PrimitiveColumn extends DBColumn{	
-		private String alias;
 
-		public PrimitiveColumn(String name, String alias, boolean isPK, boolean useSequence){
+		public PrimitiveColumn(String name, String columnName, boolean isPK, boolean useSequence){
+			super(name, columnName, isPK, useSequence);
+		}
+		public PrimitiveColumn(String name, boolean isPK, boolean useSequence){
 			super(name, isPK, useSequence);
-			if(alias != null){
-				this.alias = alias.toLowerCase();
-			}
 		}
-		
-		public abstract String getTypeInSQL(DBContext ctx);
 
-		public String getColumnName(){
-			return alias;
-		}
-		
-		public void validate(Object obj) throws DBException{
-			super.validate(obj);
-		}
-		
 		public String getValueInSQL(DBContext ctx, Object value){
 			if(value == null){
 				return "null";
@@ -465,129 +418,25 @@ public abstract class DBColumn {
 				return value.toString();
 			}
 	    }
-		
-		public void copyValue(Object from, Object to){
-			Object value = getValue(from);
-			setValue(to, value);
-		}
-			
-		protected boolean setValueFromResultSet(Object obj, ResultSet rs, String columnPrefix, String columnSuffix) throws SQLException{
-			String columnName = alias;
-			if(columnPrefix != null) columnName = columnPrefix + columnName;
-			if(columnSuffix != null) columnName = columnName + columnSuffix;
-			
-			Object value = rs.getObject(columnName);
-			if(value != null){
-				try {
-					Field field = obj.getClass().getDeclaredField(getFieldName());
-					field.setAccessible(true);     
-			        field.set(obj, value);
-				} catch (Exception e) {
-					throw new RuntimeException(e);
-				}
-				return true;
-			}else{
-				return false;
-			}
-		}
-		
-		public void appendColumnValue(DBContext ctx, StringBuilder buffer, Object value, String seperator){
-			String strValue = getValueInSQL(ctx, value);
-			buffer.append(strValue);
-		}
-
-		protected void appendColumnName(StringBuilder buffer, String seperator, String columnPrefix, String columnSuffix){
-			String columnName = alias;
-			if(columnPrefix != null) columnName = columnPrefix + columnName;
-			if(columnSuffix != null) columnName = columnName + columnSuffix;
-
-			buffer.append(columnName);
-		}
-
-		protected void appendDDL(DBContext ctx, StringBuilder buffer, String columnPrefix, String columnSuffix){
-			String columnName = alias;
-			if(columnPrefix != null) columnName = columnPrefix + columnName;
-			if(columnSuffix != null) columnName = columnName + columnSuffix;
-			
-			buffer.append("    ");
-			if(alias.length() < 15){
-				buffer.append(rightPadding(columnName, 15));
-			}else{
-				buffer.append(columnName);
-			}
-			buffer.append(" ").append(getTypeInSQL(ctx));
-		}
-
-		protected void appendWhereCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper, String columnPrefix, String columnSuffix){
-			String columnName = alias;
-			if(columnPrefix != null) columnName = columnPrefix + columnName;
-			if(columnSuffix != null) columnName = columnName + columnSuffix;
-			
-			if(value == null){
-	    		if(Oper.Equal == oper){
-	    			buffer.append(columnName).append(" is null");
-	    		}else if(Oper.NotEqual == oper){
-	    			buffer.append(columnName).append(" is not null");
-	    		}else{
-	    			throw new RuntimeException("Invalid SQL condition: " + columnName + " " + oper.getOperator() + " null");
-	    		}
-	    	}else{
-	    		String str = getValueInSQL(ctx, value);
-	    		buffer.append(columnName).append(oper.getOperator()).append(str);
-	    	}
-		}
-		
-		protected void appendSetCondition(DBContext ctx, StringBuilder buffer, Object value, Oper oper, String columnPrefix, String columnSuffix){
-			String columnName = alias;
-			if(columnPrefix != null) columnName = columnPrefix + columnName;
-			if(columnSuffix != null) columnName = columnName + columnSuffix;
-			
-			if(value == null){
-	    		buffer.append(columnName).append(Oper.Equal.getOperator()).append("null");
-	    	}else{
-	    		String str = getValueInSQL(ctx, value);
-	    		buffer.append(columnName).append(Oper.Equal.getOperator()).append(str);
-	    	}
-		}
-	    		
-		public void appendOrder(StringBuilder buffer, DBOrder order){
-			buffer.append(" order by ");
-			appendOrder(buffer, order.getOrder());
-		}	
-		protected void appendOrder(StringBuilder buffer, String order){
-			appendOrder(buffer, order, null, null);
-		}
-		protected void appendOrder(StringBuilder buffer, String order, String columnPrefix, String columnSuffix){
-			String columnName = alias;
-			if(columnPrefix != null) columnName = columnPrefix + columnName;
-			if(columnSuffix != null) columnName = columnName + columnSuffix;
-			
-			buffer.append(columnName).append(" ").append(order);
-		}
-		
-		private String rightPadding(String str, int length){
-	    	String format = "%1$-" + length +"s";
-	    	return String.format(format, str);
-	    }
 	}
     
 	public static class STRING extends PrimitiveColumn{
 		private int length;
 		
-		public STRING(String name, String alias, int length, boolean isPK) {
-			super(name, alias, isPK, false);
+		public STRING(String name, String columnName, int length, boolean isPK) {
+			super(name, columnName, isPK, false);
 			this.length = length;
 		}
-		public STRING(String name, String alias, int length) {
-			super(name, alias, false, false);
+		public STRING(String name, String columnName, int length) {
+			super(name, columnName, false, false);
 			this.length = length;
 		}
 		public STRING(String name, int length, boolean isPK) {
-			super(name, name, isPK, false);
+			super(name, isPK, false);
 			this.length = length;
 		}
 		public STRING(String name, int length) {
-			super(name, name, false, false);
+			super(name, false, false);
 			this.length = length;
 		}
 		
@@ -631,9 +480,9 @@ public abstract class DBColumn {
 		public INT_O(String name) {super(name);}	
 		public INT_O(String name, boolean isPK) {super(name, isPK);}
 		public INT_O(String name, boolean isPK, boolean isSeq) {super(name, isPK, isSeq);}
-		public INT_O(String name, String alias) {super(name, alias);}
-		public INT_O(String name, String alias, boolean isPK) {super(name, alias, isPK);}
-		public INT_O(String name, String alias, boolean isPK, boolean isSeq) {super(name, alias, isPK, isSeq);}
+		public INT_O(String name, String columnName) {super(name, columnName);}
+		public INT_O(String name, String columnName, boolean isPK) {super(name, columnName, isPK);}
+		public INT_O(String name, String columnName, boolean isPK, boolean isSeq) {super(name, columnName, isPK, isSeq);}
 		
 		public Class<?> getValueType(){
 			return Integer.class;
@@ -641,12 +490,12 @@ public abstract class DBColumn {
 	}
 	
 	public static class INT extends PrimitiveColumn{
-		public INT(String name) {super(name, name, false, false);}	
-		public INT(String name, boolean isPK) {super(name, name, isPK, false);}
-		public INT(String name, boolean isPK, boolean isSeq) {super(name, name, isPK, isSeq);}
-		public INT(String name, String alias) {super(name, alias, false, false);}
-		public INT(String name, String alias, boolean isPK) {super(name, alias, isPK, false);}
-		public INT(String name, String alias, boolean isPK, boolean isSeq) {super(name, alias, isPK, isSeq);}
+		public INT(String name) {super(name, false, false);}
+		public INT(String name, boolean isPK) {super(name, isPK, false);}
+		public INT(String name, boolean isPK, boolean isSeq) {super(name, isPK, isSeq);}
+		public INT(String name, String columnName, boolean isPK) {super(name, columnName, isPK, false);}
+		public INT(String name, String columnName) {super(name, columnName, false, false);}
+		public INT(String name, String columnName, boolean isPK, boolean isSeq) {super(name, columnName, isPK, isSeq);}
 		
 		public Class<?> getValueType(){
 			return int.class;
@@ -671,9 +520,9 @@ public abstract class DBColumn {
 		public LONG_O(String name) {super(name);}	
 		public LONG_O(String name, boolean isPK) {super(name, isPK);}
 		public LONG_O(String name, boolean isPK, boolean isSeq) {super(name, isPK, isSeq);}
-		public LONG_O(String name, String alias) {super(name, alias);}
-		public LONG_O(String name, String alias, boolean isPK) {super(name, alias, isPK);}
-		public LONG_O(String name, String alias, boolean isPK, boolean isSeq) {super(name, alias, isPK, isSeq);}
+		public LONG_O(String name, String columnName) {super(name, columnName);}
+		public LONG_O(String name, String columnName, boolean isPK) {super(name, columnName, isPK);}
+		public LONG_O(String name, String columnName, boolean isPK, boolean isSeq) {super(name, columnName, isPK, isSeq);}
 		
 		public Class<?> getValueType(){
 			return Long.class;
@@ -681,12 +530,12 @@ public abstract class DBColumn {
 	}
 	
 	public static class LONG extends PrimitiveColumn{
-		public LONG(String name) {super(name, name, false, false);}	
-		public LONG(String name, boolean isPK) {super(name, name, isPK, false);}
-		public LONG(String name, boolean isPK, boolean isSeq) {super(name, name, isPK, isSeq);}
-		public LONG(String name, String alias) {super(name, alias, false, false);}
-		public LONG(String name, String alias, boolean isPK) {super(name, alias, isPK, false);}
-		public LONG(String name, String alias, boolean isPK, boolean isSeq) {super(name, alias, isPK, isSeq);}
+		public LONG(String name) {super(name, false, false);}
+		public LONG(String name, boolean isPK) {super(name, isPK, false);}
+		public LONG(String name, boolean isPK, boolean isSeq) {super(name, isPK, isSeq);}
+		public LONG(String name, String columnName, boolean isPK) {super(name, columnName, isPK, false);}
+		public LONG(String name, String columnName) {super(name, columnName, false, false);}
+		public LONG(String name, String columnName, boolean isPK, boolean isSeq) {super(name, columnName, isPK, isSeq);}
 		
 		public Class<?> getValueType(){
 			return long.class;
@@ -718,9 +567,9 @@ public abstract class DBColumn {
 	}
 	
 	public static class DOUBLE extends PrimitiveColumn{
-		public DOUBLE(String name) {super(name, name, false, false);}	
-		public DOUBLE(String name, boolean isPK) {super(name, name, isPK, false);}
-		public DOUBLE(String name, String alias, boolean isPK) {super(name, alias, isPK, false);}
+		public DOUBLE(String name) {super(name, false, false);}
+		public DOUBLE(String name, boolean isPK) {super(name, isPK, false);}
+		public DOUBLE(String name, String columnName, boolean isPK) {super(name, columnName, isPK, false);}
 		
 		public Class<?> getValueType(){
 			return double.class;
@@ -752,9 +601,9 @@ public abstract class DBColumn {
 	}
 	
 	public static class BOOLEAN extends PrimitiveColumn{
-		public BOOLEAN(String name) {super(name, name, false, false);}
-		public BOOLEAN(String name, boolean isPK) {super(name, name, isPK, false);}
-		public BOOLEAN(String name, String alias, boolean isPK) {super(name, alias, isPK, false);}
+		public BOOLEAN(String name) {super(name, false, false);}
+		public BOOLEAN(String name, boolean isPK) {super(name, isPK, false);}
+		public BOOLEAN(String name, String columnName, boolean isPK) {super(name, columnName, isPK, false);}
 		
 		public Class<?> getValueType(){
 			return boolean.class;
@@ -806,9 +655,9 @@ public abstract class DBColumn {
 	}
 	
 	public static class DATE extends PrimitiveColumn{
-		public DATE(String name) {super(name, name, false, false);}
-		public DATE(String name, boolean isPK) {super(name, name, isPK, false);}
-		public DATE(String name, String alias, boolean isPK) {super(name, alias, isPK, false);}
+		public DATE(String name) {super(name, false, false);}
+		public DATE(String name, boolean isPK) {super(name, isPK, false);}
+		public DATE(String name, String columnName, boolean isPK) {super(name, columnName, isPK, false);}
 		
 		public Class<?> getValueType(){
 			return Date.class;
@@ -834,6 +683,59 @@ public abstract class DBColumn {
 		public String getValueInSQL(DBContext ctx, Object value){
         	Date v = (Date)value;
         	return ctx.getDBType().getValueInSQL(v);
+        }
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public static class ENUM<T extends Enum> extends PrimitiveColumn{
+		private Class<T> clazz;
+
+		public ENUM(Class<T> clazz, String name) {
+			super(name, name, false, false);
+			this.clazz = clazz;
+		}
+		
+		public Class<?> getValueType(){
+			return clazz;
+		}
+		
+		@SuppressWarnings("unchecked")
+		public Object valueOf(Object value){
+			if(value == null) return null;
+			if(value instanceof String){
+				return Enum.valueOf((Class<T>) clazz, (String)value);
+			}else if(clazz.equals(value.getClass())){
+				return value;
+			}else{
+				throw new RuntimeException("Cannot cast "+value+" to " + clazz.getName());
+			}
+		}
+		
+		protected boolean setValueFromResultSet(Object obj, ResultSet rs) throws SQLException{
+			Object value = rs.getObject(this.getColumnName());
+			if(value != null){
+				try {
+					Object enumValue = valueOf(value);
+					FieldUtils.writeField(obj, getFieldName(), enumValue, true);
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+				return true;
+			}else{
+				return false;
+			}
+		}
+		
+		public String getTypeInSQL(DBContext ctx){
+			return ctx.getDBType().getStringType(30); 
+		}
+		
+		public String getValueInSQL(DBContext ctx, Object value){
+			if(value == null){
+				return "null";
+			}else{
+				return "'" + value.toString() + "'";
+			}
         }
 	}
 	

@@ -6,6 +6,7 @@
 	<classpathentry kind="lib" path="deps/logging/slf4j-api-1.6.1.jar"/>
 	<classpathentry kind="lib" path="deps/jdbc/postgresql-9.4-1202.jdbc42.jar"/>
 	<classpathentry kind="lib" path="deps/codegen/cglib-nodep-3.1.jar"/>
+	<classpathentry kind="lib" path="deps/commons-lang3-3.1.jar"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
