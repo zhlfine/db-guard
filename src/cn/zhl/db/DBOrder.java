@@ -2,10 +2,10 @@ package cn.zhl.db;
 
 public abstract class DBOrder {
 
-	public DBColumn.PrimitiveColumn column;
+	public DBColumn column;
 	public String order;
 	
-	public DBColumn.PrimitiveColumn getDBColumn(){
+	public DBColumn getDBColumn(){
 		return column;
 	}
 	
@@ -13,19 +13,19 @@ public abstract class DBOrder {
 		return order;
 	}
 	
-	public DBOrder(DBColumn.PrimitiveColumn column, String order){
+	public DBOrder(DBColumn column, String order){
 		this.column = column;
 		this.order = order;
 	}
 	
 	public static class Asc extends DBOrder{
-		public Asc(DBColumn.PrimitiveColumn column){
+		public Asc(DBColumn column){
 			super(column, "asc");
 		}
 	}
 	
 	public static class Desc extends DBOrder{
-		public Desc(DBColumn.PrimitiveColumn column){
+		public Desc(DBColumn column){
 			super(column, "desc");
 		}
 	}

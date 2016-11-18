@@ -89,6 +89,20 @@ public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 		return columns;
 	}
 	
+	public DBColumn[] getDBColumns(boolean excludePKColumn){
+		if(excludePKColumn){
+			List<DBColumn> cols= new ArrayList<DBColumn>();
+			for(DBColumn col : getDBColumns()){
+	      		if(!col.isPK()){
+	      			cols.add(col);
+				}
+			}
+			return cols.toArray(new DBColumn.OBJECT<?>[cols.size()]);
+		}else{
+			return columns;
+		}
+	}
+	
 	public DBColumn getPKColumn(){
 		DBColumn pk = null;
 		for(DBColumn col : getDBColumns()){
@@ -288,41 +302,28 @@ public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 	}
 	
 	public int update(DBContext ctx, T bean) throws DBException{
+		DBColumn[] updateColumns = this.getDBColumns(true);
+		return update(ctx, bean, updateColumns);
+	}
+	
+	public int update(DBContext ctx, T bean, DBColumn[] updateColumns) throws DBException{
 		validate(bean);
-		
-		List<DBColumn> pks = new ArrayList<DBColumn>();
-		List<DBColumn> columns = new ArrayList<DBColumn>();
-		for(DBColumn column : getDBColumns()){
-      		if(column.isPK()){
-				pks.add(column);
-			}else{
-				columns.add(column);
-			}
-		}
-		
-		if(pks.size() == 0){
-			throw new DBException("No Primary Key");
-		}
 
 		StringBuilder buffer = new StringBuilder();
       	buffer.append("update ").append(getTableName()).append(" set ");
-      	for(int i = 0; i < columns.size(); i++){
-      		DBColumn column = columns.get(i);
+      	for(int i = 0; i < updateColumns.length; i++){
+      		DBColumn column = updateColumns[i];
 			Object value = column.getValue(bean);
 			column.equalsTo(value).appendSetCondition(ctx, buffer);
-			if(i < columns.size()-1){
+			if(i < updateColumns.length-1){
 				buffer.append(",");
 			}
 		}
+      	
+      	DBColumn pkColumn = this.getPKColumn();
       	buffer.append(" where ");
-      	for(int i = 0; i < pks.size(); i++){
-      		DBColumn column = pks.get(i);
-			Object value = column.getValue(bean);
-			column.equalsTo(value).appendWhereCondition(ctx, buffer);
-			if(i < pks.size()-1){
-				buffer.append(" and ");
-			}
-		}
+		Object value = pkColumn.getValue(bean);
+		pkColumn.equalsTo(value).appendWhereCondition(ctx, buffer);
       	
       	String sql = buffer.toString();
 		try {
@@ -331,28 +332,7 @@ public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 			throw new DBException(e);
 		}
 	}
-	
-	public int updateFields(DBContext ctx, DBField pkField, DBField[] fields) throws DBException{
-		StringBuilder buffer = new StringBuilder();
-      	buffer.append("update ").append(getTableName()).append(" set ");
-      	for(int i = 0; i < fields.length; i++){
-      		DBField field = fields[i];
-			field.getColumn().equalsTo(field.getValue()).appendSetCondition(ctx, buffer);
-			if(i < fields.length-1){
-				buffer.append(",");
-			}
-		}
-      	buffer.append(" where ");
-		pkField.getColumn().equalsTo(pkField.getValue()).appendWhereCondition(ctx, buffer);
-      	
-      	String sql = buffer.toString();
-		try {
-			return DBHelper.executeUpdate(ctx, sql);
-		} catch (SQLException e) {
-			throw new DBException(e);
-		}
-	}
-	
+
 	public List<T> query(DBContext ctx){
 		return query(ctx, null, null, 0, 0);
 	}
@@ -409,6 +389,13 @@ public abstract class GenericDAO<T> implements DBObjectBuilder<T> {
 		} catch (SQLException e) {
 			throw new DBException(e);
 		}
+	}
+	
+	public PageData<T> queryByPage(DBContext ctx, DBCondition condition, DBOrder order, int pageIndex, int pageSize){
+		int offset = (pageIndex-1)*pageSize;
+		List<T> data = query(ctx, condition, order, pageSize, offset);
+		int total = this.count(ctx, condition);
+		return new PageData<T>(pageIndex, pageSize, total, data);
 	}
 	
 	public T queryUnique(DBContext ctx, DBCondition condition){

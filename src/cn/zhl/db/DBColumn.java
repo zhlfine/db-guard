@@ -215,14 +215,14 @@ public abstract class DBColumn {
 		@SuppressWarnings("unchecked")
 		protected void setListValue(Object obj){
 			List<T> list = null;
-					
+			
+			DBCondition condition = fkColumn.equalsTo(obj);
 			if(preFetch){
-				DBCondition condition = fkColumn.equalsTo(obj);
 				list = dao.query(DBContext.getContext(), condition);
 			}else{
 				Enhancer enhancer = new Enhancer();
 				enhancer.setSuperclass(ArrayList.class);
-				enhancer.setCallback(new DBListProxy<T>(obj, beanClass, getFieldName(), fkColumn));
+				enhancer.setCallback(new DBListProxy<T>(obj, beanClass, getFieldName(), condition));
 				list = (List<T>)enhancer.create();
 			}
 			try {
@@ -369,6 +369,7 @@ public abstract class DBColumn {
 						enhancer.setSuperclass(beanClass);
 						enhancer.setCallback(new DBObjectProxy<T>(pkColumn, obj, bean, getFieldName()));
 						bean = (T)enhancer.create();
+						FieldUtils.writeField(bean, dao.getPKColumn().getFieldName(), value, true);
 					}
 
 					FieldUtils.writeField(obj, getFieldName(), bean, true);
@@ -397,7 +398,12 @@ public abstract class DBColumn {
 		}
 
 		public String getValueInSQL(DBContext ctx, Object value) {
-			return pkColumn.getValueInSQL(ctx, value);
+			if(beanClass.isInstance(value)){
+				Object v = pkColumn.getValue(value);
+				return pkColumn.getValueInSQL(ctx, v);
+			}else{
+				return pkColumn.getValueInSQL(ctx, value);
+			}
 		}
 	}
 	

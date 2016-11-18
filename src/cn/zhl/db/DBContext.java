@@ -287,7 +287,11 @@ public class DBContext {
 	}
 	
 	public Object getTxService(Object serviceImpl){
-		DBTxHandler txHandler = new DBTxHandler(serviceImpl, this);
+		return getTxService(dbId, serviceImpl);
+	}
+	
+	public static Object getTxService(String dbId, Object serviceImpl){
+		DBTxHandler txHandler = new DBTxHandler(serviceImpl, new DBContext(dbId));
 		return Proxy.newProxyInstance(serviceImpl.getClass().getClassLoader(), serviceImpl.getClass().getInterfaces(), txHandler);
 	}
 
